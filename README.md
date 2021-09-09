@@ -6,7 +6,7 @@ Instana is an [APM solution](https://www.instana.com/product-overview/) built fo
 
 ## IBM Monitoring Instana Integration Service
 
-This repository contains the deployment package for the IBM Monitoring Instana Integration Service. The IBM Monitoring Instana Integration Service enables a select subset of IBM ITM V6 and ITCAM agents to send monitoring data to an Instana server. 
+This repository contains the deployment package for the **IBM Monitoring Instana Integration Service**. The IBM Monitoring Instana Integration Service enables a select subset of IBM ITM V6 and ITCAM agents to send monitoring data to an Instana server. 
 
 ### Downloading
 
