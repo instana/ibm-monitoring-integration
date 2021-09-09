@@ -15,4 +15,4 @@ The deployment package is named **ibm-monitoring-integration**-v.r.m.**zip**. Th
 
 ### Installing
 
-[This documentation section](https://www.instana.com/docs/ecosystem/ibm-itmv6) provides an overview of the service and describes the installation process. The **readme.txt** file that is included in the deployment package provides detailed installation instructions.  
+[This section of the Instana documentation](https://www.instana.com/docs/ecosystem/ibm-itmv6) provides an overview of the service and describes the installation process. The **readme.txt** file that is included in the deployment package provides detailed installation instructions.  
