@@ -10,7 +10,7 @@ This repository contains the deployment package for the **IBM Monitoring Instana
 
 ### Downloading
 
-The deployment package is named **ibm-monitoring-integration**-v.r.m.**zip**. The deployment package will be published to the [Releases](https://github.com/instana/ibm-monitoring-integration/releases) section of this repository in the near future.
+The deployment package is named **ibm-monitoring-integration**-v.r.m.**zip**. This package is available in the [Releases](https://github.com/instana/ibm-monitoring-integration/releases) section of this repository.
 
 
 ### Installing
