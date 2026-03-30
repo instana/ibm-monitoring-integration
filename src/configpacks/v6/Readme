@@ -1,0 +1,48 @@
+Use this package to configure IBM V6 agents to connect to the Instana agent. 
+
+For information about integrating ITM V6 agents with Instana, see
+https://www.ibm.com/docs/en/instana-observability/latest?topic=technologies-integrating-itm-v6
+
+Prerequisites
+-------------
+To connect to the Instana agent over HTTP, you must apply 6.3.0.7-TIV-ITM_TEMA-IF0003 or later patch to the ITM agents.
+To connect to the Instana agent over HTTPS, you must apply 6.3.0.7-TIV-ITM_TEMA-IF0008 or later patch to the ITM agents.
+
+On Linux or AIX system, the default system shell linked to by '/bin/sh' must be sh, bash or ksh.
+
+
+Procedure
+---------
+To locally configure the agents to connect to the Instana agent, complete the following steps:
+
+1. Edit the env.properties file and replace INSTANA_AGENT_HOST with the hostname where your
+   Instana agent is running.
+
+2. Run the agent2server_itm script with the -i, -c and -e options.
+
+	AIX/Linux: ./agent2server_itm.sh -i <agent_install_dir> -c dual -e env.properties
+	Windows: agent2server_itm.bat -i <agent_install_dir> -c dual -e env.properties
+
+	where <agent_install_dir> is the agent installation directory. For example, /opt/ibm/itm.
+        	
+
+To remotely configure the agents to connect to the Instana agent, refer to following link for details.
+https://ibm.biz/remote-config-itm
+
+
+Result
+---------
+The ITM V6 agents are working in dual mode (connects to both TEMS and Instana agent). Monitoring data is available for the agents on the TEP and on the Instana user interface.
+
+What to do next
+---------------
+	- Open the Instana user interface to view monitoring data for the agents.
+
+	- If you are sure that you no longer need to reconnect the agents to TEMS, follow the procedure above and reconfigure the agents to only connect to the Instana agent. This is the default for the agent2server_itm script so -c option is not necessary. Optionally remove the offline agents from TEP.
+
+	- To reconnect the agents to TEMS, run the following command:
+		AIX/Linux: ./agent2server_itm.sh -i <agent_install_dir> -r
+		Windows: agent2server_itm.bat -i <agent_install_dir> -r
+		
+		where, <agent_install_dir> is the agent installation directory.
+
