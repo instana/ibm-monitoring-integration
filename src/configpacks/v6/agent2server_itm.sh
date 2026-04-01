@@ -53,10 +53,13 @@ CDIR=$(cd $(dirname "$0"); pwd -P)
 
 print_usage() {
 	PROGRAME=`basename "$0"`
-	echo "Usage: $PROGRAME -i <ITMhome> [-c <instana|itm|dual> ] [-e <env.properties> ] [-p product or products] [-r] [-m]"
+	echo "Usage: $PROGRAME -i <ITMhome> [-c <instana|itm|dual> ] [-e <env.properties> ] [-p product or products] [-j <sda_support_dirs>] [-r] [-m]"
 	echo "-c: connection modes. valid values are instana, itm and dual. The default is instana."
 	echo "-e: the path to the file that contains all required server properties. By default, it is env.properties in the same directory of the agent2server_itm script."
 	echo "-i: agent install directory (ITMhome)"
+	echo "-j: SDA jar support directories for custom agents. Format: \"pc1=path1,pc2=path2\""
+	echo "    where path is the custom agent installation support directory containing the SDA jar file"
+	echo "    Example: -j \"11=/tmp/k11/support\""
 	echo "-m: display current connection mode"
 	echo "-p: agent type pc list delimited by space. for example: \"lz mq\""
 	echo "-r: revert to ITM"
@@ -920,7 +923,125 @@ envfile_exist() {
 		return 1
 	else
 		return 0
-	fi	
+	fi
+}
+
+# Validate and parse SDA support directories
+# Format: "pc1=path1,pc2=path2"
+validate_sda_support_dirs() {
+	log_info "Enter validate_sda_support_dirs"
+	if [ -z "$SDA_SUPPORT_DIRS" ]; then
+		log_info "No SDA support directories specified"
+		return 0
+	fi
+	
+	# Parse comma-separated mappings
+	IFS=',' read -ra MAPPINGS <<< "$SDA_SUPPORT_DIRS"
+	for mapping in "${MAPPINGS[@]}"; do
+		# Check if mapping contains '='
+		if [[ ! "$mapping" =~ = ]]; then
+			echo "ERROR: Invalid SDA mapping format: $mapping"
+			echo "Missing '=' separator. Expected format: productcode=path"
+			echo "Example: -j \"11=/tmp/k11/support\""
+			log_err "Invalid SDA mapping format (missing =): $mapping"
+			exit 1
+		fi
+		
+		pc=$(echo "$mapping" | cut -d'=' -f1 | tr -d ' ')
+		support_dir=$(echo "$mapping" | cut -d'=' -f2- | tr -d ' ')
+		
+		if [ -z "$pc" ] || [ -z "$support_dir" ]; then
+			echo "ERROR: Invalid SDA mapping format: $mapping"
+			echo "Expected format: productcode=path"
+			echo "Example: -j \"11=/tmp/k11/support\""
+			log_err "Invalid SDA mapping format: $mapping"
+			exit 1
+		fi
+		
+		# Check if support directory exists
+		if [ ! -d "$support_dir" ]; then
+			echo "ERROR: SDA support directory does not exist for product code $pc"
+			echo "Directory: $support_dir"
+			log_err "SDA support directory does not exist: $support_dir"
+			exit 1
+		fi
+		
+		# Look for SDA jar file with pattern: ${pc}_sda_*.jar or k${pc}_sda_*.jar
+		sda_jar=$(ls "$support_dir"/${pc}_sda_*.jar 2>/dev/null | head -1)
+		if [ -z "$sda_jar" ]; then
+			sda_jar=$(ls "$support_dir"/k${pc}_sda_*.jar 2>/dev/null | head -1)
+		fi
+		
+		if [ -z "$sda_jar" ]; then
+			echo "ERROR: SDA jar file not found for product code $pc"
+			echo "Expected pattern: ${pc}_sda_*.jar or k${pc}_sda_*.jar"
+			echo "In directory: $support_dir"
+			log_err "SDA jar file not found in $support_dir for product code $pc"
+			exit 1
+		fi
+		
+		log_info "Found SDA jar: $sda_jar for product code $pc"
+	done
+	
+	log_info "Exit validate_sda_support_dirs (OK)"
+	return 0
+}
+
+# Copy SDA jar file for a specific product code
+# $1: product code
+copy_sda_jar() {
+	log_info "Enter copy_sda_jar($1)"
+	pc=$1
+	
+	if [ -z "$SDA_SUPPORT_DIRS" ]; then
+		log_info "No SDA support directories specified, skipping SDA jar copy"
+		return 0
+	fi
+	
+	# Parse comma-separated mappings to find this product code
+	IFS=',' read -ra MAPPINGS <<< "$SDA_SUPPORT_DIRS"
+	for mapping in "${MAPPINGS[@]}"; do
+		map_pc=$(echo "$mapping" | cut -d'=' -f1 | tr -d ' ')
+		support_dir=$(echo "$mapping" | cut -d'=' -f2- | tr -d ' ')
+		
+		if [ "$map_pc" = "$pc" ]; then
+			# Find the SDA jar file
+			sda_jar=$(ls "$support_dir"/${pc}_sda_*.jar 2>/dev/null | head -1)
+			if [ -z "$sda_jar" ]; then
+				sda_jar=$(ls "$support_dir"/k${pc}_sda_*.jar 2>/dev/null | head -1)
+			fi
+			
+			if [ -n "$sda_jar" ]; then
+				# Get the architecture for this product code
+				_arch=`get_binary_arch ${pc}`
+				target_dir="${CANDLEHOME}/${_arch}/${pc}/support"
+				
+				if [ ! -d "$target_dir" ]; then
+					echo "WARNING: Target support directory does not exist: $target_dir"
+					log_warn "Target support directory does not exist: $target_dir"
+					return 1
+				fi
+				
+				sda_jar_name=$(basename "$sda_jar")
+				echo "Copying SDA jar for product code $pc: $sda_jar_name"
+				log_info "Copying $sda_jar to $target_dir/"
+				
+				cp "$sda_jar" "$target_dir/" 2>&1 | tee -a $LOG_FILE
+				if [ $? -eq 0 ]; then
+					echo "Successfully copied SDA jar to $target_dir/"
+					log_info "Successfully copied SDA jar to $target_dir/"
+				else
+					echo "ERROR: Failed to copy SDA jar to $target_dir/"
+					log_err "Failed to copy SDA jar to $target_dir/"
+					exit 1
+				fi
+			fi
+			break
+		fi
+	done
+	
+	log_info "Exit copy_sda_jar"
+	return 0
 }
 
 update_file()
@@ -1159,6 +1280,7 @@ INSTALLED_TEMA_VER_32=
 INSTALLED_TEMA_VER_64=
 PROTOCOL="http" # http as default
 CONNECTION_MODE="icam"
+SDA_SUPPORT_DIRS=
 icam_begin_comment="#Begin_of_ICAM_settings_do_not_update_this_line"
 icam_2nd_comment="#Below_section_is_for_ICAM_only_do_not_add_customized_data_here"
 icam_end_comment="#End_of_ICAM_settings_do_not_update_this_line"
@@ -1166,24 +1288,27 @@ icam_end_comment="#End_of_ICAM_settings_do_not_update_this_line"
 LOG_FILE=/tmp/agent2server_itm.log
 rm -f $LOG_FILE  2>/dev/null
 
-while getopts "c:e:i:o:p:s:t:mrn" opt
+while getopts "c:e:i:j:o:p:s:t:mrn" opt
 
 do
     case ${opt} in
-	c)
-		CONNECTION_MODE=${OPTARG}
-		if [ "$CONNECTION_MODE" == "instana" ]
-		then
-			CONNECTION_MODE="icam"
-		fi
-		valid_args ${opt} "$CONNECTION_MODE"
-		;;
+ c)
+  CONNECTION_MODE=${OPTARG}
+  if [ "$CONNECTION_MODE" == "instana" ]
+  then
+   CONNECTION_MODE="icam"
+  fi
+  valid_args ${opt} "$CONNECTION_MODE"
+  ;;
     e)
     	ENVPROPFILE=${OPTARG}
     	;;
     i)
         CANDLEHOME=${OPTARG}
-		;;
+  ;;
+ j)
+  SDA_SUPPORT_DIRS=${OPTARG}
+  ;;
 	m)
 		DIS_CUR_MODE=1
 		;;		
@@ -1252,6 +1377,9 @@ else
 
 	prereq_check $CANDLEHOME
 	
+	# Validate SDA support directories if provided
+	validate_sda_support_dirs
+	
 	if [ "$SERVER" = "" -o "$PORT" = "" -o "$TENANTID" = "" ]; then
 		if [ `get_config_status` = "no" ]; then
 			echo "Need to specify server hostname, port and tenantid in env.properties."
@@ -1270,8 +1398,9 @@ else
 		is_inlist=`is_in_desired_list ${x}`
 		if [ "$is_supported" = "yes" -a "$is_inlist" = "yes" ]; then
 			update_envfile ${x}
+			copy_sda_jar ${x}
 			CONFIGURED_PC_LIST="$CONFIGURED_PC_LIST ${x}"
-		fi	
+		fi
 	done
 
 	display_current_conn_mode "${CONFIGURED_PC_LIST}"
