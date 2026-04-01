@@ -36,6 +36,7 @@ set server_host_e=
 set protocol_e=
 set TenantID_e=
 set enable_cp4mcm_hist=
+set sda_support_dirs=
 set "_NEW_SERVERNAME=Instana host agent"
 :: for 3 connection mode, only one following three can be defined.
 :: itm_m is identical to rollback
@@ -76,6 +77,10 @@ IF "%~1"=="" goto DISPLAY_USAGE
 	    call :Check_Required_Param "Product code list" "-p" %2
 		if errorlevel 1 exit /b 1
 		SET pclist=%~2
+	) ELSE IF %1==-j (
+	    call :Check_Required_Param "SDA support directories" "-j" %2
+		if errorlevel 1 exit /b 1
+		SET sda_support_dirs=%~2
 	) ELSE IF %1==-r (
 		SET rollback=true
 	) ELSE IF %1==-c (
@@ -238,6 +243,7 @@ echo "server_port=%server_port%" >> %logfile%
 echo "TenantID=%TenantID%" >> %logfile%
 echo "envFile=%envFile%" >> %logfile%
 echo "pclist=%pclist%"  >> %logfile%
+echo "sda_support_dirs=%sda_support_dirs%" >> %logfile%
 echo "rollback=%rollback%" >> %logfile%
 echo "conn_mode=%conn_mode%" >> %logfile%
 echo "itm_m=%itm_m%" >> %logfile%
@@ -252,6 +258,12 @@ set kincinfoexe=%CandleHome_s%\InstallITM\kincinfo.exe
 set supportIF9=
 call :PreCheck supportIF9
 if errorlevel 1 exit /b 1
+
+:: Validate SDA support directories if provided
+if defined sda_support_dirs (
+	call :Validate_SDA_Support_Dirs
+	if errorlevel 1 exit /b 1
+)
 set "v2018keyStr=;--- %_NEW_SERVERNAME% Settings."
 ::set _TMPFILE_DIR=%TMP%
 set _TMPFILE_DIR=%SCRIPT_HOME_S%
@@ -428,10 +440,13 @@ exit /b 0
 
 :DISPLAY_USAGE
 echo Usage:
-echo %SCRIPT_NAME% -i ^<ITMhome^> [-e ^<env.properties^>] [-p ^<product code list^>] [-r] [-c ^<instana^|itm^|dual^>] [-m]
+echo %SCRIPT_NAME% -i ^<ITMhome^> [-e ^<env.properties^>] [-p ^<product code list^>] [-j ^<sda_support_dirs^>] [-r] [-c ^<instana^|itm^|dual^>] [-m]
 echo -i ^<ITMhome^>             The installation directory of ITM or ITCAM agents.
 echo -e ^<env.properties^>      The path to the file that contains all required server properties. By default, it is env.properties in the same directory of the agent2server_itm script.
 echo -p ^<product code list^>   A list of product codes that will be configured to connect to %_NEW_SERVERNAME%. For example, "nt mq qi"
+echo -j ^<sda_support_dirs^>    SDA jar support directories for custom agents. Format: "pc1=path1,pc2=path2"
+echo                           where path is the custom agent installation support directory containing the SDA jar file
+echo                           Example: -j "11=C:\tmp\k11\support"
 echo -r                       If this parameter is specified, all agents will be configured to reconnect to TEMS.
 echo -c                       Connection modes. valid values are instana, itm and dual. The default is instana.
 echo -m                       Display current connection mode.
@@ -550,6 +565,148 @@ setlocal
  endlocal & set "%retvar%=%prev%" & exit /b 0
 
 
+:: Validate SDA support directories
+:: Format: "pc1=path1,pc2=path2"
+:Validate_SDA_Support_Dirs
+setlocal
+echo Enter Validate_SDA_Support_Dirs >> %logfile%
+if not defined sda_support_dirs (
+	echo No SDA support directories specified >> %logfile%
+	endlocal & exit /b 0
+)
+
+:: Parse comma-separated mappings
+for %%m in ("%sda_support_dirs:,=" "%") do (
+	set "mapping=%%~m"
+	
+	:: Check if mapping contains '='
+	echo !mapping! | findstr "=" >nul
+	if errorlevel 1 (
+		call :Log_echo "ERROR: Invalid SDA mapping format: !mapping!"
+		call :Log_echo "Missing '=' separator. Expected format: productcode=path"
+		call :Log_echo "Example: -j \"11=C:\tmp\k11\support\""
+		endlocal & exit /b 1
+	)
+	
+	for /f "tokens=1,2 delims==" %%a in ("!mapping!") do (
+		set "pc=%%a"
+		set "support_dir=%%b"
+		
+		:: Trim spaces
+		for /f "tokens=* delims= " %%x in ("!pc!") do set "pc=%%x"
+		for /f "tokens=* delims= " %%y in ("!support_dir!") do set "support_dir=%%y"
+		
+		if "!pc!"=="" (
+			call :Log_echo "ERROR: Invalid SDA mapping format: !mapping!"
+			call :Log_echo "Expected format: productcode=path"
+			call :Log_echo "Example: -j \"11=C:\tmp\k11\support\""
+			endlocal & exit /b 1
+		)
+		if "!support_dir!"=="" (
+			call :Log_echo "ERROR: Invalid SDA mapping format: !mapping!"
+			call :Log_echo "Expected format: productcode=path"
+			call :Log_echo "Example: -j \"11=C:\tmp\k11\support\""
+			endlocal & exit /b 1
+		)
+		
+		:: Check if support directory exists
+		if not exist "!support_dir!" (
+			call :Log_echo "ERROR: SDA support directory does not exist for product code !pc!"
+			call :Log_echo "Directory: !support_dir!"
+			endlocal & exit /b 1
+		)
+		
+		:: Look for SDA jar file with pattern: ${pc}_sda_*.jar or k${pc}_sda_*.jar
+		set "sda_jar="
+		for %%f in ("!support_dir!\!pc!_sda_*.jar") do set "sda_jar=%%f"
+		if not defined sda_jar (
+			for %%f in ("!support_dir!\k!pc!_sda_*.jar") do set "sda_jar=%%f"
+		)
+		
+		if not defined sda_jar (
+			call :Log_echo "ERROR: SDA jar file not found for product code !pc!"
+			call :Log_echo "Expected pattern: !pc!_sda_*.jar or k!pc!_sda_*.jar"
+			call :Log_echo "In directory: !support_dir!"
+			endlocal & exit /b 1
+		)
+		
+		echo Found SDA jar: !sda_jar! for product code !pc! >> %logfile%
+	)
+)
+
+echo Exit Validate_SDA_Support_Dirs (OK) >> %logfile%
+endlocal & exit /b 0
+
+:: Copy SDA jar file for a specific product code
+:: %1: product code
+:Copy_SDA_Jar
+setlocal
+set "pc=%~1"
+echo Enter Copy_SDA_Jar(%pc%) >> %logfile%
+
+if not defined sda_support_dirs (
+	echo No SDA support directories specified, skipping SDA jar copy >> %logfile%
+	endlocal & exit /b 0
+)
+
+:: Parse comma-separated mappings to find this product code
+for %%m in ("%sda_support_dirs:,=" "%") do (
+	set "mapping=%%~m"
+	for /f "tokens=1,2 delims==" %%a in ("!mapping!") do (
+		set "map_pc=%%a"
+		set "support_dir=%%b"
+		
+		:: Trim spaces
+		for /f "tokens=* delims= " %%x in ("!map_pc!") do set "map_pc=%%x"
+		for /f "tokens=* delims= " %%y in ("!support_dir!") do set "support_dir=%%y"
+		
+		if /i "!map_pc!"=="%pc%" (
+			:: Find the SDA jar file
+			set "sda_jar="
+			for %%f in ("!support_dir!\%pc%_sda_*.jar") do set "sda_jar=%%f"
+			if not defined sda_jar (
+				for %%f in ("!support_dir!\k%pc%_sda_*.jar") do set "sda_jar=%%f"
+			)
+			
+			if defined sda_jar (
+				:: Get the architecture for this product code
+				for /f "tokens=3 delims=," %%i in ('%kincinfoexe% -d ^| findstr /C:"Agent" ^| findstr /C:"%pc%"') do (
+					set "_arch=%%i"
+					set "_arch=!_arch:"=!"
+				)
+				
+				if defined _arch (
+					set "target_dir=%CandleHome_s%\!_arch!\%pc%\support"
+					
+					if not exist "!target_dir!" (
+						call :Log_echo "WARNING: Target support directory does not exist: !target_dir!"
+						endlocal & exit /b 1
+					)
+					
+					for %%n in ("!sda_jar!") do set "sda_jar_name=%%~nxn"
+					call :Log_echo "Copying SDA jar for product code %pc%: !sda_jar_name!"
+					echo Copying !sda_jar! to !target_dir!\ >> %logfile%
+					
+					copy /Y /V "!sda_jar!" "!target_dir!\" >> %logfile% 2>&1
+					if !errorlevel! equ 0 (
+						call :Log_echo "Successfully copied SDA jar to !target_dir!\"
+					) else (
+						call :Log_echo "ERROR: Failed to copy SDA jar to !target_dir!\"
+						endlocal & exit /b 1
+					)
+				) else (
+					call :Log_echo "WARNING: Could not determine architecture for product code %pc%"
+				)
+			)
+			goto :copy_sda_done
+		)
+	)
+)
+
+:copy_sda_done
+echo Exit Copy_SDA_Jar >> %logfile%
+endlocal & exit /b 0
+
 :: _PC, _INST, _INIFILE and _INIFULLPATH, _NOTCONFIGURED are defined global vars
 :CovertToICAM
 setlocal
@@ -597,8 +754,9 @@ echo Enter CovertToICAM>>%logfile%
 	type %_TMPFILE_NEWLIST_PC% >> %_INIFULLPATH%
 	if defined supportIF9 echo IRA_V8_LOCALCONFIG_DIR=%CandleHome_s%\localconfig\%_PC%_icam >> %_INIFULLPATH%
 	:: copy /y /V %_INIFULLPATH% %SCRIPT_HOME_S%\ini6.txt
+	call :Copy_SDA_Jar %_PC%
 	call :Log_echo  "Complete reconfiguration of %_PC% instance %_INST%"
-echo Exit CovertToICAM with rc 0 >> %logfile%	
+echo Exit CovertToICAM with rc 0 >> %logfile%
 endlocal & exit /b 0
 
 :CovertToITM
