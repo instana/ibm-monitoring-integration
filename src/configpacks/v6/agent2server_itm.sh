@@ -825,6 +825,16 @@ read_envproperties() {
 	if [ -f "$ENVPROPFILE" ]; then
 		SERVER=`grep ^hostname "$ENVPROPFILE" 2>/dev/null | cut -f 2 -d '='`
 		log_info "SERVER=$SERVER"
+		
+		# Check if hostname is still the placeholder value
+		if [ "$SERVER" = "INSTANA_AGENT_HOST" ]; then
+			echo "ERROR: hostname in $ENVPROPFILE is still set to the placeholder value 'INSTANA_AGENT_HOST'."
+			echo "Please update the hostname to the actual hostname or FQDN where the Instana Host Agent is running."
+			echo "Example: hostname=instana.example.com"
+			log_warn "hostname in $ENVPROPFILE is still set to placeholder value 'INSTANA_AGENT_HOST'"
+			exit 1
+		fi
+		
 		valid_args "s" $SERVER
 		TENANTID=`grep ^tenantid "$ENVPROPFILE" 2>/dev/null | cut -f 2 -d '='`
 		log_info "TENANTID=$TENANTID"

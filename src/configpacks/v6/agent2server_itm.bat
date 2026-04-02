@@ -156,6 +156,17 @@ if exist "%envFile%" (
 if not defined protocol set protocol=%protocol_e%
 if not defined server_host set server_host=%server_host_e%
 if not defined server_port set server_port=%server_port_e%
+
+:: Check if hostname is still the placeholder value
+if not defined rollback (
+	if /i "%server_host%"=="INSTANA_AGENT_HOST" (
+		call :Log_echo "ERROR: hostname in %envFile% is still set to the placeholder value 'INSTANA_AGENT_HOST'."
+		call :Log_echo "Please update the hostname to the actual hostname or FQDN where the Instana Host Agent is running."
+		call :Log_echo "Example: hostname=instana.example.com"
+		exit /b 1
+	)
+)
+
 if defined server_host (
 	echo %server_host%|findstr "^[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*$" >nul && (
 		call :Log_echo "Do not specify IP address for the hostname."
