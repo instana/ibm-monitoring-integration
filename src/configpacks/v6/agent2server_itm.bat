@@ -37,7 +37,7 @@ set protocol_e=
 set TenantID_e=
 set enable_cp4mcm_hist=
 set sda_support_dirs=
-set "_NEW_SERVERNAME=Instana host agent"
+set "_NEW_SERVERNAME=Instana Host Agent"
 :: for 3 connection mode, only one following three can be defined.
 :: itm_m is identical to rollback
 set dual_m=
@@ -156,6 +156,17 @@ if exist "%envFile%" (
 if not defined protocol set protocol=%protocol_e%
 if not defined server_host set server_host=%server_host_e%
 if not defined server_port set server_port=%server_port_e%
+
+:: Check if hostname is still the placeholder value
+if not defined rollback (
+	if /i "%server_host%"=="INSTANA_AGENT_HOST" (
+		call :Log_echo "ERROR: hostname in %envFile% is still set to the placeholder value 'INSTANA_AGENT_HOST'."
+		call :Log_echo "Please update the hostname to the actual hostname or FQDN where the Instana Host Agent is running."
+		call :Log_echo "Example: hostname=instana.example.com"
+		exit /b 1
+	)
+)
+
 if defined server_host (
 	echo %server_host%|findstr "^[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*$" >nul && (
 		call :Log_echo "Do not specify IP address for the hostname."
@@ -224,14 +235,17 @@ if defined rollback (
 :: Active Directory                3Z
 :: MS Cluster                      Q5
 :: MS Exchange                     EX 
-:: Original supported list kept for reference only - validation disabled to support all product codes
+:: All product codes are now supported, including custom agents built with Agent Builder/Agent Factory
+:: The supported_pclist below is kept for reference only and is no longer used for validation
 set "supported_pclist=BN MQ NT QI YN UD SA HU RZ JE NU OT SA VM OQ Q7 QF HV S7 H8 OY V6 VD QL 3Z Q5 EX"
-if not defined pclist (
-	set pclist=%supported_pclist%
+if "%pclist%"=="" (
+	:: When -p is not specified, configure ALL installed agents (including custom agents)
+	:: This matches the behavior of the Linux script
+	:: Set to special marker to indicate "all agents"
+	set "pclist=__ALL__"
 ) else (
-    :: Validation disabled - all product codes are now supported
-    :: call :Validate_PC %pclist%
-    :: if errorlevel 1  exit /b 1
+    :: All product codes are now supported - no validation is performed
+    :: This allows custom agents with any product code to be configured
     for %%i in (A B C D E F G H I J K L M N O P Q R S T U V W X Y Z) do set "pclist=!pclist:%%i=%%i!"
 )
 
@@ -543,8 +557,13 @@ for /F "tokens=2,5,*" %%i in ('%kincinfoexe% -r ^| findstr Running') do (
 		call :FindInstName ret_inst !tmpline!
 		if not defined ret_inst set ret_inst=Primary
 		echo !tmpline! | findstr /C:"Not Running" >nul 2>&1 || set "_running_list_=!_running_list_! K!pc!!ret_inst!"
-    	echo !pc! | findstr "%pclist%" >nul 2>&1 && echo !pc! !ret_inst!>>%_TMPFILE_INSTANCELIST%
-    )    
+		:: If pclist is __ALL__ (no -p specified), configure all agents; otherwise check if pc is in the list
+		if "!pclist!"=="__ALL__" (
+			echo !pc! !ret_inst!>>%_TMPFILE_INSTANCELIST%
+		) else (
+			echo !pc! | findstr "!pclist!" >nul 2>&1 && echo !pc! !ret_inst!>>%_TMPFILE_INSTANCELIST%
+		)
+    )
 )
 echo Exit GetInstanceList>> %logfile%
 endlocal & set "%1=%_running_list_%" & exit /b 0
@@ -669,20 +688,16 @@ for %%m in ("%sda_support_dirs:,=" "%") do (
 			)
 			
 			if defined sda_jar (
-				:: Get the architecture for this product code
-				for /f "tokens=3 delims=," %%i in ('%kincinfoexe% -d ^| findstr /C:"Agent" ^| findstr /C:"%pc%"') do (
-					set "_arch=%%i"
-					set "_arch=!_arch:"=!"
+				:: Determine the correct ITM directory (tmaitm6_x64 for 64-bit, tmaitm6 for 32-bit)
+				:: Check for 64-bit first, then 32-bit
+				set "target_dir="
+				if exist "%CandleHome_s%\tmaitm6_x64\support\%pc%" (
+					set "target_dir=%CandleHome_s%\tmaitm6_x64\support\%pc%"
+				) else if exist "%CandleHome_s%\tmaitm6\support\%pc%" (
+					set "target_dir=%CandleHome_s%\tmaitm6\support\%pc%"
 				)
 				
-				if defined _arch (
-					set "target_dir=%CandleHome_s%\!_arch!\%pc%\support"
-					
-					if not exist "!target_dir!" (
-						call :Log_echo "WARNING: Target support directory does not exist: !target_dir!"
-						endlocal & exit /b 1
-					)
-					
+				if defined target_dir (
 					for %%n in ("!sda_jar!") do set "sda_jar_name=%%~nxn"
 					call :Log_echo "Copying SDA jar for product code %pc%: !sda_jar_name!"
 					echo Copying !sda_jar! to !target_dir!\ >> %logfile%
@@ -695,7 +710,10 @@ for %%m in ("%sda_support_dirs:,=" "%") do (
 						endlocal & exit /b 1
 					)
 				) else (
-					call :Log_echo "WARNING: Could not determine architecture for product code %pc%"
+					call :Log_echo "WARNING: Target support directory does not exist for product code %pc%"
+					call :Log_echo "         Checked: %CandleHome_s%\tmaitm6_x64\support\%pc%"
+					call :Log_echo "         Checked: %CandleHome_s%\tmaitm6\support\%pc%"
+					endlocal & exit /b 1
 				)
 			)
 			goto :copy_sda_done
@@ -763,7 +781,7 @@ endlocal & exit /b 0
 setlocal
 echo Enter CovertToITM>>%logfile%
     if defined _NOTCONFIGURED (
-    	call :Log_echo "%_PC% agent instance %_INST% is not configured to IBM Cloud Application Management server, there is nothing to change." 
+    	call :Log_echo "%_PC% agent instance %_INST% is not configured to Instana, there is nothing to change." 
     	echo Exit CovertToITM with rc 0 >>%logfile%
     	endlocal & exit /b 0
     )
@@ -891,10 +909,10 @@ if defined dual_m if not defined supportIF9 (
 	dir /s "%CandleHome_s%\localconfig\*_situations.xml" >nul 2>&1
 	) || goto Remove_xml_loop
 	echo Warning:
-	echo Agents are configured to connect to the Instana host agent and the Tivoli Enterprise Monitoring ^
+	echo Agents are configured to connect to the Instana Host Agent and the Tivoli Enterprise Monitoring ^
 Server ^(TEMS^) simultaneously. Any existing configuration files for Private situations and Central Configuration server ^
 that are configured for IBM Tivoli Monitoring are backed up and replaced by those files that are downloaded from the ^
-Instana host agent.
+Instana Host Agent.
 	   echo Therefore, Private situations, Private Historical data, and Central Configuration server files that are configured ^
 in IBM Tivoli Monitoring are not available in dual mode.
  	echo.
@@ -918,7 +936,7 @@ in IBM Tivoli Monitoring are not available in dual mode.
     		mkdir "%CandleHome_s%\localconfig\%pc%_icam"
     	) else (
 	    	if exist "%CandleHome_s%\localconfig\%pc%_v6backup" (
-	    		rem v6backup already exisit, just remove all xml as APM v8 did.
+	    		rem v6backup already exists, just remove all xml as APM v8 did.
 	    		for /R "%CandleHome_s%\localconfig\%pc%" %%i in ( *.xml ) do (
 	    			del /Q %%i >nul 2>&1
 	    		)
@@ -931,7 +949,7 @@ in IBM Tivoli Monitoring are not available in dual mode.
 	    				echo Successfully backup %CandleHome%\localconfig\%pc% >>%logfile%
 	    			)
 	    		) else (
-	    			rem crete empty v6backup dir to indidate it is switched to Cloud server.  
+	    			rem crete empty v6backup dir to indidate it is switched to Instana agent.  
 	    			mkdir "%CandleHome_s%\localconfig\%pc%_v6backup"
 	    		)
 	    		rem empty pc dir is required to download xml.
@@ -1065,13 +1083,19 @@ setlocal
 set filter=
 set require32=
 set require64=
+
+:: If pclist is __ALL__ (no -p specified), skip the precheck as we'll configure all installed agents
+if "%pclist%"=="__ALL__" (
+	endlocal & exit /b 0
+)
+
 call :make_filter filter %pclist%
 
 %kincinfoexe% -d | findstr "%filter%" > %tmp%\tmpfile_precheck 2>&1
 if errorlevel 1 (
 	call :Log_echo "The specified agent ^( %pclist% ^) is not installed."
 	del /Q %tmp%\tmpfile_precheck
-	endlocal & exit /b 1 
+	endlocal & exit /b 1
 )
 
 type %tmp%\tmpfile_precheck | findstr "\"WINNT\"" >nul 2>&1 && set require32=true
@@ -1116,7 +1140,7 @@ if defined version_GL32 if defined version_GL64 (
 	if "%version_GL32%" LSS "%verIF9%" if "%version_GL64%" LSS "%verIF9%" ( goto end_of_precheck )
 	echo Warning: 
 	echo Found mixed 32-bit/64-bit TEMA framework^(GL^) versions. If you need to enable Private situations, ^
-Private Historical data, and Centralized Configuration for Instana host agent and Tivoli Enterprise Monitoring ^
+Private Historical data, and Centralized Configuration for Instana Host Agent and Tivoli Enterprise Monitoring ^
 Server^(TEMS^) simultaneously, upgrade both 32-bit and 64-bit TEMA to 06300709 or later.
 	echo.
 	goto end_of_precheck
