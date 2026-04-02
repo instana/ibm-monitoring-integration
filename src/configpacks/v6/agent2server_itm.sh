@@ -137,12 +137,12 @@ prereq_check() {
 
 		if [ "$axver" -lt "$prereqaxver" -a ${IS_REVERT_TO_CMS} -eq 0 ]; then
 			printf "update your TEMA framework(ax) to version $prereqaxver or later.
-06300703 or later is required to connect to the Cloud App Management server over HTTP.
-06300708 or later is required to connect to the Cloud App Management serer over HTTPS.\n "
+06300703 or later is required to connect to the Instana Host Agent over HTTP.
+06300708 or later is required to connect to the Instana Host Agent over HTTPS.\n "
 			
 			log_err "update your TEMA framework(ax) to version $prereqaxver or later.
-06300703 or later is required to connect to the Cloud App Management server over HTTP.
-06300708 or later is required to connect to the Cloud App Management serer over HTTPS.\n"
+06300703 or later is required to connect to the Instana Host Agent over HTTP.
+06300708 or later is required to connect to the Instana Host Agent over HTTPS.\n"
 			exit 1
 		fi
 	done
@@ -797,7 +797,7 @@ backup_localconfig() {
 		warning_check=$(find "$LOCALCONFIG_DIR" -name *_cnfglist.xml -o -name *_situations.xml)
 		if [ -n "$warning_check" -a "$CONNECTION_MODE" = "dual" -a "$isUpIF9" = "no" ];then
 	        echo "Warning:" 
-	        echo "Agents are configured to connect to the Instana host agent and the Tivoli Enterprise Monitoring \
+	        echo "Agents are configured to connect to the Instana Host Agent and the Tivoli Enterprise Monitoring \
 Server (TEMS) simultaneously. Any existing configuration files for Private situations and Central Configuration server that \
 are configured for IBM Tivoli Monitoring are backed up and replaced by those files that are downloaded from the Instana \
 host agent."
