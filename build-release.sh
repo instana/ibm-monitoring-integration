@@ -22,7 +22,7 @@ SRC_DIR="$SCRIPT_DIR/src/configpacks/v6"
 
 VERSION="$1"
 if [ -z "$VERSION" ]; then
-    VERSION_FILE="$SRC_DIR/VERSION"
+    VERSION_FILE="$SCRIPT_DIR/VERSION"
     if [ ! -f "$VERSION_FILE" ]; then
         echo "ERROR: no version argument and $VERSION_FILE not found."
         exit 1
