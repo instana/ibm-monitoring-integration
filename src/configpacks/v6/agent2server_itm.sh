@@ -278,11 +278,28 @@ create_default_envfiles() {
 
 is_supported_agent() {
 
-	# Always supported for Instana
 	log_info "Enter is_supported_agent($1)"
 	pc=$1
-	supported="yes"
 
+	# Exclude ITM infrastructure components that are not monitoring agents.
+	# These run under the same CANDLEHOME and appear in cinfo -R, but must
+	# never be force-stopped: doing so risks database/state corruption.
+	#   ms/fa/qm/ds - Tivoli Enterprise Monitoring Server (TEMS) variants
+	#   cq          - Tivoli Enterprise Portal Server (TEPS)
+	#   hd          - Warehouse Proxy Agent
+	#   sy          - Summarization and Pruning Agent
+	#   sh          - Tivoli Enterprise Monitoring SOAP Server
+	#   as          - Tivoli Enterprise Monitoring Automation Server
+	#   kf          - IBM Knowledge Center / Eclipse Help Server
+	case $pc in
+		ms|fa|qm|ds|cq|hd|sy|sh|as|kf)
+			log_info "Exit is_supported_agent(no) - infrastructure component excluded"
+			echo "no"
+			return
+			;;
+	esac
+
+	supported="yes"
 	echo $supported
 	log_info "Exit is_supported_agent($supported)"
 }
