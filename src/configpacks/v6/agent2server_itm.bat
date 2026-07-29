@@ -549,9 +549,21 @@ setlocal
 echo Enter GetInstanceList>> %logfile%
 if exist %_TMPFILE_INSTANCELIST% del /Q %_TMPFILE_INSTANCELIST%
 :: including Running and Not Running, exclude IN since it is Manage_Tivoli_Enterprise_Monitoring_Services
+:: Also exclude ITM infrastructure components that are not monitoring agents — stopping or
+:: reconfiguring these risks database/state corruption:
+::   MS/FA/QM/DS - Tivoli Enterprise Monitoring Server (TEMS) variants
+::   CQ          - Tivoli Enterprise Portal Server (TEPS)
+::   HD          - Warehouse Proxy Agent
+::   SY          - Summarization and Pruning Agent
+::   SH          - Tivoli Enterprise Monitoring SOAP Server
+::   AS          - Tivoli Enterprise Monitoring Automation Server
+::   KF          - IBM Knowledge Center / Eclipse Help Server
+set "infra_pcs=MS FA QM DS CQ HD SY SH AS KF"
 for /F "tokens=2,5,*" %%i in ('%kincinfoexe% -r ^| findstr Running') do (
 	set pc=%%i
-	if not "!pc!"=="IN" (
+	set is_infra=
+	for %%x in (%infra_pcs%) do if /i "!pc!"=="%%x" set is_infra=true
+	if not "!pc!"=="IN" if not defined is_infra (
     	set tmpline=%%k
     	set ret_inst=
 		call :FindInstName ret_inst !tmpline!
