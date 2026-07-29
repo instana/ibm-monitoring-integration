@@ -32,7 +32,7 @@ fi
 echo "Building version $VERSION ..."
 DIST_DIR="$SCRIPT_DIR/dist"
 ARCHIVE_NAME="instana-v6-configpack"
-STAGE_DIR="$DIST_DIR/${ARCHIVE_NAME}"
+STAGE_DIR="$DIST_DIR/stage"
 
 # Verify source files exist
 for f in agent2server_itm.sh agent2server_itm.bat env.properties Readme; do
@@ -62,23 +62,20 @@ echo ""
 
 # --- ZIP ---
 # -X strips macOS extended attributes (__MACOSX/ folder) on BSD zip
-# -r recursive, -q quiet
+# Files are placed at archive root (no subdirectory) to match prior releases.
 ZIP_FILE="$DIST_DIR/${ARCHIVE_NAME}.zip"
-cd "$DIST_DIR"
-zip -X -r "$ZIP_FILE" "${ARCHIVE_NAME}/"
+cd "$STAGE_DIR"
+zip -X -r "$ZIP_FILE" .
 echo "Created: $ZIP_FILE"
 
 # --- TAR ---
-# macOS (BSD tar): COPYFILE_DISABLE=1 prevents embedding ._ extended attribute files
-# GNU tar:         --format=ustar is portable and safe; no extended attributes emitted anyway
+# Use ustar format on both macOS and Linux to prevent extended attribute headers
+# (e.g. com.apple.provenance) that cause warnings on Linux tar.
+# COPYFILE_DISABLE=1 also suppresses macOS ._resource fork files.
+# Files are placed at archive root (no subdirectory) to match prior releases.
 TAR_FILE="$DIST_DIR/${ARCHIVE_NAME}.tar"
-cd "$DIST_DIR"
-if tar --version 2>&1 | grep -q "GNU"; then
-    tar --format=ustar -cf "$TAR_FILE" "${ARCHIVE_NAME}/"
-else
-    # BSD tar (macOS)
-    COPYFILE_DISABLE=1 tar -cf "$TAR_FILE" "${ARCHIVE_NAME}/"
-fi
+cd "$STAGE_DIR"
+COPYFILE_DISABLE=1 tar --format=ustar -cf "$TAR_FILE" .
 echo "Created: $TAR_FILE"
 
 # Clean up staging directory
