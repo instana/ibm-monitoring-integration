@@ -27,6 +27,12 @@ To locally configure the V6 agents to connect to the Instana agent, complete the
 
     Note: any agents currently running will be restarted by the script.
 
+    Optional: Use the -p option to limit configuration to specific agent product codes.
+    For example, to configure only the Linux OS and MQ agents:
+
+    AIX/Linux: ./agent2server_itm.sh -i <agent_install_dir> -c dual -e env.properties -p "lz mq"
+    Windows: agent2server_itm.bat -i <agent_install_dir> -c dual -e env.properties -p "lz mq"
+
 To remotely configure the agents to connect to the Instana agent, refer to the following link for details.
 https://www.ibm.com/docs/en/instana-observability/latest?topic=technologies-integrating-itm-v6
 
