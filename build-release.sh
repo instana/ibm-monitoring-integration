@@ -53,8 +53,8 @@ cp "$SRC_DIR/env.properties"       "$STAGE_DIR/"
 cp "$SRC_DIR/Readme"               "$STAGE_DIR/"
 printf "\nVersion: %s\n" "$VERSION" >> "$STAGE_DIR/Readme"
 
-# Copy subscriptions directory if present (contains asf_definition.xml files for
-# agents that do not upload an sda jar, e.g. subscriptions/rz/asf_definition.xml)
+# Copy subscriptions directory (contains asf_definition.xml files for
+# agents that are not supported natively by the ITM sensor or custom agents)
 if [ -d "$SRC_DIR/subscriptions" ]; then
     cp -r "$SRC_DIR/subscriptions" "$STAGE_DIR/subscriptions"
     echo "Included subscriptions directory:"
