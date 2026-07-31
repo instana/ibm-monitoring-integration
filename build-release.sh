@@ -53,6 +53,14 @@ cp "$SRC_DIR/env.properties"       "$STAGE_DIR/"
 cp "$SRC_DIR/Readme"               "$STAGE_DIR/"
 printf "\nVersion: %s\n" "$VERSION" >> "$STAGE_DIR/Readme"
 
+# Copy subscriptions directory (contains asf_definition.xml files for
+# agents that are not supported natively by the ITM sensor or custom agents)
+if [ -d "$SRC_DIR/subscriptions" ]; then
+    cp -r "$SRC_DIR/subscriptions" "$STAGE_DIR/subscriptions"
+    echo "Included subscriptions directory:"
+    find "$STAGE_DIR/subscriptions" -type f | sort
+fi
+
 # Ensure correct permissions on the shell script
 chmod 755 "$STAGE_DIR/agent2server_itm.sh"
 

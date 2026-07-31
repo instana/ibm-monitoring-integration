@@ -429,6 +429,7 @@ if defined rollback (
 echo Sucess PC list:%_SUCCESS_PCLIST%>> %logfile%
 :: echo Restart list:%_RESTART_LIST%>> %logfile%
 call :Remove_xml %_SUCCESS_PCLIST%
+call :Copy_Subscription_Files %_SUCCESS_PCLIST%
 call :Restart_Agent %_RUNNING_LIST%
 if defined _SUCCESS_PCLIST (
 	if defined rollback (
@@ -735,6 +736,71 @@ for %%m in ("%sda_support_dirs:,=" "%") do (
 
 :copy_sda_done
 echo Exit Copy_SDA_Jar >> %logfile%
+endlocal & exit /b 0
+
+:: Copy asf_definition.xml subscription files for agents that do not send an sda jar.
+:: For each product code in %*, if .\subscriptions\<pc>\asf_definition.xml exists it is
+:: placed into the correct localconfig path.
+::
+:: Target path rules:
+::   Single-instance agent:  localconfig\<pc>_icam\<pc>_asfSubscription.xml
+::   Multi-instance agent:   localconfig\<pc>_icam\<inst>\<pc>_<inst>_asfSubscription.xml
+::
+:: Instance names are discovered from config\<pc>_<inst>.config files, which exist
+:: whether the agent is running or not.  The instance subdir is created if needed.
+:Copy_Subscription_Files
+setlocal
+echo Enter Copy_Subscription_Files >> %logfile%
+:copy_sub_loop
+	set "pc=%~1"
+	if not defined pc goto copy_sub_end
+	set "src_file=%SCRIPT_HOME_S%\subscriptions\%pc%\asf_definition.xml"
+	if not exist "!src_file!" (
+		echo No subscription file for %pc%, skipping >> %logfile%
+		shift
+		goto copy_sub_loop
+	)
+	echo Found subscription file for %pc%: !src_file! >> %logfile%
+
+	:: Look for multi-instance config files: config\<pc>_<inst>.config
+	set "found_instance="
+	for %%f in ("%CandleHome_s%\config\%pc%_*.config") do (
+		set "cfg_base=%%~nxf"
+		:: Strip leading <pc>_ and trailing .config to get the instance name
+		set "inst=!cfg_base!"
+		set "inst=!inst:~0,-7!"
+		call set "inst=%%inst:!pc!_=%%"
+		set "target_dir=%CandleHome_s%\localconfig\%pc%_icam\!inst!"
+		set "target_file=!target_dir!\%pc%_!inst!_asfSubscription.xml"
+		echo Discovered instance '!inst!' from %%f >> %logfile%
+		if not exist "!target_dir!" mkdir "!target_dir!"
+		echo Copying !src_file! to !target_file! >> %logfile%
+		copy /Y /V "!src_file!" "!target_file!" >> %logfile% 2>&1
+		if !errorlevel! equ 0 (
+			call :Log_echo "Copied subscription file for %pc% to !target_file!"
+		) else (
+			call :Log_echo "WARNING: Failed to copy subscription file for %pc% to !target_file!"
+		)
+		set "found_instance=1"
+	)
+
+	if not defined found_instance (
+		:: No <pc>_<inst>.config found — single-instance agent
+		set "target_dir=%CandleHome_s%\localconfig\%pc%_icam"
+		set "target_file=!target_dir!\%pc%_asfSubscription.xml"
+		if not exist "!target_dir!" mkdir "!target_dir!"
+		echo Copying !src_file! to !target_file! >> %logfile%
+		copy /Y /V "!src_file!" "!target_file!" >> %logfile% 2>&1
+		if !errorlevel! equ 0 (
+			call :Log_echo "Copied subscription file for %pc% to !target_file!"
+		) else (
+			call :Log_echo "WARNING: Failed to copy subscription file for %pc% to !target_file!"
+		)
+	)
+	shift
+	goto copy_sub_loop
+:copy_sub_end
+echo Exit Copy_Subscription_Files >> %logfile%
 endlocal & exit /b 0
 
 :: _PC, _INST, _INIFILE and _INIFULLPATH, _NOTCONFIGURED are defined global vars
