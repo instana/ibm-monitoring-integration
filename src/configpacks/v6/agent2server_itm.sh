@@ -953,6 +953,70 @@ envfile_exist() {
 	fi
 }
 
+# Copy asf_definition.xml subscription files for agents that do not send an sda jar.
+# For each configured product code, if ./subscriptions/<pc>/asf_definition.xml exists
+# it is placed into the correct localconfig path so the agent can use it immediately
+# without waiting for a sda jar upload.
+#
+# Target path rules (derived from observed ITM localconfig behaviour):
+#   Single-instance agent:  localconfig/<pc>_icam/<pc>_asfSubscription.xml
+#   Multi-instance agent:   localconfig/<pc>_icam/<instance>/<pc>_<instance>_asfSubscription.xml
+#
+# Instance names are discovered from config/<pc>_<instance>.config files, which exist
+# whether the agent is running or not.  The instance subdir is created if needed.
+copy_subscription_files() {
+	log_info "Enter copy_subscription_files"
+
+	for pc in $CONFIGURED_PC_LIST; do
+		src_file="${CDIR}/subscriptions/${pc}/asf_definition.xml"
+		if [ ! -f "$src_file" ]; then
+			log_info "No subscription file for product code ${pc}, skipping"
+			continue
+		fi
+
+		log_info "Found subscription file for product code ${pc}: ${src_file}"
+
+		# Look for multi-instance config files: config/<pc>_<instance>.config
+		found_instance=0
+		for cfg in "${CANDLEHOME}/config/${pc}_"*.config; do
+			[ -f "$cfg" ] || continue
+			# Extract instance name by stripping leading <pc>_ and trailing .config
+			cfg_base=`basename "$cfg"`
+			inst="${cfg_base#${pc}_}"
+			inst="${inst%.config}"
+			target_dir="${LOCALCONFIG_DIR}/${pc}_icam/${inst}"
+			target_file="${target_dir}/${pc}_${inst}_asfSubscription.xml"
+			log_info "Discovered instance '${inst}' from ${cfg}"
+			mkdir -p "$target_dir"
+			_do_copy_subscription "$pc" "$src_file" "$target_file"
+			found_instance=1
+		done
+
+		if [ "$found_instance" = "0" ]; then
+			# No <pc>_<instance>.config found — single-instance agent
+			target_dir="${LOCALCONFIG_DIR}/${pc}_icam"
+			target_file="${target_dir}/${pc}_asfSubscription.xml"
+			mkdir -p "$target_dir"
+			_do_copy_subscription "$pc" "$src_file" "$target_file"
+		fi
+	done
+
+	log_info "Exit copy_subscription_files"
+}
+
+# Helper: copy src to dst and log the result.  $1=pc  $2=src  $3=dst
+_do_copy_subscription() {
+	_pc="$1"; _src="$2"; _dst="$3"
+	cp "$_src" "$_dst"
+	if [ $? -eq 0 ]; then
+		echo "Copied subscription file for ${_pc} to ${_dst}"
+		log_info "Successfully copied subscription file for ${_pc} to ${_dst}"
+	else
+		echo "WARNING: Failed to copy subscription file for ${_pc} to ${_dst}"
+		log_warn "Failed to copy subscription file for ${_pc} to ${_dst}"
+	fi
+}
+
 # Validate and parse SDA support directories
 # Format: "pc1=path1,pc2=path2"
 validate_sda_support_dirs() {
@@ -1433,7 +1497,8 @@ else
 	display_current_conn_mode "${CONFIGURED_PC_LIST}"
 	stop_all_agents
 	handle_localconfig
-	if [ "$PROTOCOL" = "https" ]; then	
+	copy_subscription_files
+	if [ "$PROTOCOL" = "https" ]; then
 		make_keyfilesforicam "$CDIR/keyfiles"
 	fi	
 	do_additional_config
