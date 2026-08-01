@@ -459,7 +459,7 @@ echo %SCRIPT_NAME% -i ^<ITMhome^> [-e ^<env.properties^>] [-p ^<product code lis
 echo -i ^<ITMhome^>             The installation directory of ITM or ITCAM agents.
 echo -e ^<env.properties^>      The path to the file that contains all required server properties. By default, it is env.properties in the same directory of the agent2server_itm script.
 echo -p ^<product code list^>   A list of product codes that will be configured to connect to %_NEW_SERVERNAME%. For example, "nt mq qi"
-echo -j ^<sda_support_dirs^>    SDA jar support directories for custom agents. Format: "pc1=path1,pc2=path2"
+echo -j ^<sda_support_dirs^>    SDA jar support directories for custom agents. Format: "pc1=dir1,pc2=dir2"
 echo                           where path is the custom agent installation support directory containing the SDA jar file
 echo                           Example: -j "11=C:\tmp\k11\support"
 echo -r                       If this parameter is specified, all agents will be configured to reconnect to TEMS.
@@ -598,7 +598,7 @@ setlocal
 
 
 :: Validate SDA support directories
-:: Format: "pc1=path1,pc2=path2"
+:: Format: "pc1=dir1,pc2=dir2"
 :Validate_SDA_Support_Dirs
 setlocal
 echo Enter Validate_SDA_Support_Dirs >> %logfile%
@@ -615,7 +615,7 @@ for %%m in ("%sda_support_dirs:,=" "%") do (
 	echo !mapping! | findstr "=" >nul
 	if errorlevel 1 (
 		call :Log_echo "ERROR: Invalid SDA mapping format: !mapping!"
-		call :Log_echo "Missing '=' separator. Expected format: productcode=path"
+		call :Log_echo "Missing '=' separator. Expected format: productcode=dir"
 		call :Log_echo "Example: -j \"11=C:\tmp\k11\support\""
 		endlocal & exit /b 1
 	)
@@ -630,13 +630,13 @@ for %%m in ("%sda_support_dirs:,=" "%") do (
 		
 		if "!pc!"=="" (
 			call :Log_echo "ERROR: Invalid SDA mapping format: !mapping!"
-			call :Log_echo "Expected format: productcode=path"
+			call :Log_echo "Expected format: productcode=dir"
 			call :Log_echo "Example: -j \"11=C:\tmp\k11\support\""
 			endlocal & exit /b 1
 		)
 		if "!support_dir!"=="" (
 			call :Log_echo "ERROR: Invalid SDA mapping format: !mapping!"
-			call :Log_echo "Expected format: productcode=path"
+			call :Log_echo "Expected format: productcode=dir"
 			call :Log_echo "Example: -j \"11=C:\tmp\k11\support\""
 			endlocal & exit /b 1
 		)
@@ -1162,10 +1162,17 @@ set filter=
 set require32=
 set require64=
 
-:: If pclist is __ALL__ (no -p specified), skip the precheck as we'll configure all installed agents
-if "%pclist%"=="__ALL__" (
-	endlocal & exit /b 0
-)
+:: Always detect GL version first so that supportIF9 is set correctly regardless of pclist.
+set version_GL32=
+set version_GL64=
+for /F "tokens=*" %%i in ('%kincinfoexe% -t GL ^| findstr KGL ^| findstr WINNT') do call :getversion version_GL32 %%i
+for /F "tokens=*" %%i in ('%kincinfoexe% -t GL ^| findstr KGL ^| findstr WIX64') do call :getversion version_GL64 %%i
+echo found 32 GL version=%version_GL32% >> %logfile%
+echo found 64 GL version=%version_GL64% >> %logfile%
+
+:: If pclist is __ALL__ (no -p specified), skip the agent-installed check and go straight
+:: to the IF9 version check — we will configure all installed agents.
+if "%pclist%"=="__ALL__" goto check_IF9
 
 call :make_filter filter %pclist%
 
@@ -1180,12 +1187,7 @@ type %tmp%\tmpfile_precheck | findstr "\"WINNT\"" >nul 2>&1 && set require32=tru
 type %tmp%\tmpfile_precheck | findstr "\"WIX64\"" >nul 2>&1 && set require64=true
 del /Q %tmp%\tmpfile_precheck
 
-set version_GL32=
-set version_GL64=
-for /F "tokens=*" %%i in ('%kincinfoexe% -t GL ^| findstr KGL ^| findstr WINNT') do call :getversion version_GL32 %%i
-for /F "tokens=*" %%i in ('%kincinfoexe% -t GL ^| findstr KGL ^| findstr WIX64') do call :getversion version_GL64 %%i
-echo found 32 GL version=%version_GL32% >> %logfile% 
-echo found 64 GL version=%version_GL64% >> %logfile%
+:check_IF9
 
 if /i "%protocol%"=="https" (
 	set "prereqKGLver=06.30.07.08"

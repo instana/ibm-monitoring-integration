@@ -57,7 +57,7 @@ print_usage() {
 	echo "-c: connection modes. valid values are instana, itm and dual. The default is instana."
 	echo "-e: the path to the file that contains all required server properties. By default, it is env.properties in the same directory of the agent2server_itm script."
 	echo "-i: agent install directory (ITMhome)"
-	echo "-j: SDA jar support directories for custom agents. Format: \"pc1=path1,pc2=path2\""
+	echo "-j: SDA jar support directories for custom agents. Format: \"pc1=dir1,pc2=dir2\""
 	echo "    where path is the custom agent installation support directory containing the SDA jar file"
 	echo "    Example: -j \"11=/tmp/k11/support\""
 	echo "-m: display current connection mode"
@@ -231,7 +231,7 @@ valid_args() {
 get_binary_arch() {
    log_info "Enter get_binary_arch($1)"
    pc=$1
-   arch=`${CANDLEHOME}/bin/cinfo -d | grep Agent | grep $pc | awk -F, '{print $3}' | tr -d '"'`
+   arch=`${CANDLEHOME}/bin/cinfo -d | grep Agent | grep "\"${pc}\"" | awk -F, '{print $3}' | tr -d '"' | head -1`
    echo ${arch}
    log_info "Exit get_binary_arch($arch)"
 }
@@ -1018,7 +1018,7 @@ _do_copy_subscription() {
 }
 
 # Validate and parse SDA support directories
-# Format: "pc1=path1,pc2=path2"
+# Format: "pc1=dir1,pc2=dir2"
 validate_sda_support_dirs() {
 	log_info "Enter validate_sda_support_dirs"
 	if [ -z "$SDA_SUPPORT_DIRS" ]; then
@@ -1032,7 +1032,7 @@ validate_sda_support_dirs() {
 		# Check if mapping contains '='
 		if [[ ! "$mapping" =~ = ]]; then
 			echo "ERROR: Invalid SDA mapping format: $mapping"
-			echo "Missing '=' separator. Expected format: productcode=path"
+			echo "Missing '=' separator. Expected format: productcode=dir"
 			echo "Example: -j \"11=/tmp/k11/support\""
 			log_err "Invalid SDA mapping format (missing =): $mapping"
 			exit 1
@@ -1043,7 +1043,7 @@ validate_sda_support_dirs() {
 		
 		if [ -z "$pc" ] || [ -z "$support_dir" ]; then
 			echo "ERROR: Invalid SDA mapping format: $mapping"
-			echo "Expected format: productcode=path"
+			echo "Expected format: productcode=dir"
 			echo "Example: -j \"11=/tmp/k11/support\""
 			log_err "Invalid SDA mapping format: $mapping"
 			exit 1
