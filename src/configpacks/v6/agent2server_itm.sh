@@ -231,7 +231,7 @@ valid_args() {
 get_binary_arch() {
    log_info "Enter get_binary_arch($1)"
    pc=$1
-   arch=`${CANDLEHOME}/bin/cinfo -d | grep Agent | grep $pc | awk -F, '{print $3}' | tr -d '"'`
+   arch=`${CANDLEHOME}/bin/cinfo -d | grep Agent | grep "\"${pc}\"" | awk -F, '{print $3}' | tr -d '"' | head -1`
    echo ${arch}
    log_info "Exit get_binary_arch($arch)"
 }
