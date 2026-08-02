@@ -51,7 +51,7 @@ mkdir -p <configpack>/subscriptions/rz
 cp data_source/rz/asf_definition.xml <configpack>/subscriptions/rz/
 ```
 
-## Pre-populated agents (44)
+## Pre-populated agents (45)
 
 The following agents ship with a pre-populated `asf_definition.xml` in this configpack.
 You can add files for additional agents by following the extraction procedure above.
@@ -75,6 +75,7 @@ You can add files for additional agents by following the extraction procedure ab
 | `is` | Internet Service Monitoring Agent | 8.2.3.0500 |
 | `je` | JBoss Application Server Agent | 8.2.2.0400 |
 | `kj` | MongoDB Agent | 8.2.2.0700 |
+| `lo` | Log File Agent | 6.3.0.1100 |
 | `mj` | MariaDB Agent | 8.2.2.0700 |
 | `mo` | Microsoft Office 365 Agent | 8.2.2.0100 |
 | `nu` | NetApp Storage Agent | 8.2.3.0500 |

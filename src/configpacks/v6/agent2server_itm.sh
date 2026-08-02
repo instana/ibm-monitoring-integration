@@ -953,6 +953,81 @@ envfile_exist() {
 	fi
 }
 
+# Read IRA_CUSTOM_METADATA_LOCATION from <pc>_<instance>.config (preferred) or <pc>.ini.
+# $1=pc  $2=instance (may be empty for single-instance agents)
+# Echoes the resolved path value, or an empty string when the variable is absent.
+# Lines that are already commented out (leading #) are ignored.
+_get_ira_custom_metadata_location() {
+	_gpc="$1"; _ginst="$2"
+	_val=""
+
+	# Check <pc>_<instance>.config first (more specific), then fall back to <pc>.ini
+	if [ -n "$_ginst" ] && [ -f "${CANDLEHOME}/config/${_gpc}_${_ginst}.config" ]; then
+		_val=$(grep '^[[:space:]]*IRA_CUSTOM_METADATA_LOCATION[[:space:]]*=' \
+			"${CANDLEHOME}/config/${_gpc}_${_ginst}.config" 2>/dev/null | head -1)
+	fi
+	if [ -z "$_val" ] && [ -f "${CANDLEHOME}/config/${_gpc}.ini" ]; then
+		_val=$(grep '^[[:space:]]*IRA_CUSTOM_METADATA_LOCATION[[:space:]]*=' \
+			"${CANDLEHOME}/config/${_gpc}.ini" 2>/dev/null | head -1)
+	fi
+
+	# Extract path portion (strip key name and '=')
+	_path=$(echo "$_val" | sed 's/^[[:space:]]*IRA_CUSTOM_METADATA_LOCATION[[:space:]]*=[[:space:]]*//')
+	echo "$_path"
+}
+
+# Comment out IRA_CUSTOM_METADATA_LOCATION in a single config file.
+# $1=file
+_comment_out_ira_custom_metadata() {
+	_file="$1"
+	[ -f "$_file" ] || return 0
+	if grep -q '^[[:space:]]*IRA_CUSTOM_METADATA_LOCATION[[:space:]]*=' "$_file" 2>/dev/null; then
+		if [ "$(uname)" = "AIX" ]; then
+			_tmp="${_file}.$$.tmp"
+			sed 's/^\([[:space:]]*IRA_CUSTOM_METADATA_LOCATION[[:space:]]*=\)/#\1/' "$_file" > "$_tmp" \
+				&& mv -f "$_tmp" "$_file"
+		else
+			sed -i 's/^\([[:space:]]*IRA_CUSTOM_METADATA_LOCATION[[:space:]]*=\)/#\1/' "$_file"
+		fi
+		log_info "Commented out IRA_CUSTOM_METADATA_LOCATION in ${_file}"
+	fi
+}
+
+# Decide SDA/CAMF vs ASF mode for one agent instance, then act accordingly.
+#
+# Case A: IRA_CUSTOM_METADATA_LOCATION is set and the referenced file exists
+#         -> SDA/CAMF mode: leave config unchanged, skip ASF subscription.
+# Case B: IRA_CUSTOM_METADATA_LOCATION is set but the referenced file is missing
+#         -> Comment it out in <pc>.ini and <pc>_<inst>.config, then copy ASF subscription.
+# Case C: IRA_CUSTOM_METADATA_LOCATION is not present
+#         -> ASF mode: copy ASF subscription.
+#
+# $1=pc  $2=instance (may be empty)  $3=src asf_definition.xml  $4=target subscription file
+handle_sda_camf_mode() {
+	_hpc="$1"; _hinst="$2"; _hsrc="$3"; _hdst="$4"
+
+	_ira_path=$(_get_ira_custom_metadata_location "$_hpc" "$_hinst")
+
+	if [ -n "$_ira_path" ]; then
+		if [ -f "$_ira_path" ]; then
+			# Case A: SDA/CAMF file present — use SDA mode, no ASF subscription needed
+			echo "Product ${_hpc}${_hinst:+ instance ${_hinst}}: SDA file ${_ira_path} found, using SDA mode"
+			log_info "SDA/CAMF mode for ${_hpc}${_hinst:+/${_hinst}}: file exists at ${_ira_path}"
+			return 0
+		else
+			# Case B: variable set but file missing — comment it out, fall through to ASF
+			echo "Product ${_hpc}${_hinst:+ instance ${_hinst}}: SDA file ${_ira_path} not found, switching to ASF mode"
+			log_info "ASF fallback for ${_hpc}${_hinst:+/${_hinst}}: file missing at ${_ira_path}, commenting out IRA_CUSTOM_METADATA_LOCATION"
+			_comment_out_ira_custom_metadata "${CANDLEHOME}/config/${_hpc}.ini"
+			if [ -n "$_hinst" ]; then
+				_comment_out_ira_custom_metadata "${CANDLEHOME}/config/${_hpc}_${_hinst}.config"
+			fi
+		fi
+	fi
+	# Case B (continued) or Case C: create ASF subscription
+	_do_copy_subscription "$_hpc" "$_hsrc" "$_hdst"
+}
+
 # Copy asf_definition.xml subscription files for agents that do not send an sda jar.
 # For each configured product code, if ./subscriptions/<pc>/asf_definition.xml exists
 # it is placed into the correct localconfig path so the agent can use it immediately
@@ -964,6 +1039,10 @@ envfile_exist() {
 #
 # Instance names are discovered from config/<pc>_<instance>.config files, which exist
 # whether the agent is running or not.  The instance subdir is created if needed.
+#
+# SDA/CAMF detection per impl.md: if IRA_CUSTOM_METADATA_LOCATION is set and the
+# referenced file exists, SDA mode is used and no ASF subscription is written.
+# If the file is missing the variable is commented out and ASF mode is used instead.
 copy_subscription_files() {
 	log_info "Enter copy_subscription_files"
 
@@ -988,7 +1067,7 @@ copy_subscription_files() {
 			target_file="${target_dir}/${pc}_${inst}_asfSubscription.xml"
 			log_info "Discovered instance '${inst}' from ${cfg}"
 			mkdir -p "$target_dir"
-			_do_copy_subscription "$pc" "$src_file" "$target_file"
+			handle_sda_camf_mode "$pc" "$inst" "$src_file" "$target_file"
 			found_instance=1
 		done
 
@@ -997,7 +1076,7 @@ copy_subscription_files() {
 			target_dir="${LOCALCONFIG_DIR}/${pc}_icam"
 			target_file="${target_dir}/${pc}_asfSubscription.xml"
 			mkdir -p "$target_dir"
-			_do_copy_subscription "$pc" "$src_file" "$target_file"
+			handle_sda_camf_mode "$pc" "" "$src_file" "$target_file"
 		fi
 	done
 

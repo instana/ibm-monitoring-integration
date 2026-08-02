@@ -429,7 +429,7 @@ if defined rollback (
 echo Sucess PC list:%_SUCCESS_PCLIST%>> %logfile%
 :: echo Restart list:%_RESTART_LIST%>> %logfile%
 call :Remove_xml %_SUCCESS_PCLIST%
-call :Copy_Subscription_Files %_SUCCESS_PCLIST%
+if not defined rollback call :Copy_Subscription_Files %_SUCCESS_PCLIST%
 call :Restart_Agent %_RUNNING_LIST%
 if defined _SUCCESS_PCLIST (
 	if defined rollback (
@@ -738,67 +738,149 @@ for %%m in ("%sda_support_dirs:,=" "%") do (
 echo Exit Copy_SDA_Jar >> %logfile%
 endlocal & exit /b 0
 
+:: Resolve the ENV file full path for a given pc and instance.
+:: IRA_CUSTOM_METADATA_LOCATION lives in K<PC>ENV (single-instance) or
+:: K<PC>ENV_<inst> (multi-instance), under tmaitm6_x64\ or tmaitm6\.
+:: %1=pc  %2=inst (may be "Primary" or empty for single-instance)
+:: Sets _INI_FOR_SUB to the full path, or empty if not found.
+:Resolve_Ini_Path
+	set "_INI_FOR_SUB="
+	set "_ini_for_sub_file="
+	if "%~2"=="" (
+		set "_ini_for_sub_file=K%~1ENV"
+	) else if /i "%~2"=="Primary" (
+		set "_ini_for_sub_file=K%~1ENV"
+	) else (
+		set "_ini_for_sub_file=K%~1ENV_%~2"
+	)
+	if exist "%CandleHome_s%\tmaitm6_x64\!_ini_for_sub_file!" (
+		set "_INI_FOR_SUB=%CandleHome_s%\tmaitm6_x64\!_ini_for_sub_file!"
+	) else if exist "%CandleHome_s%\tmaitm6\!_ini_for_sub_file!" (
+		set "_INI_FOR_SUB=%CandleHome_s%\tmaitm6\!_ini_for_sub_file!"
+	)
+exit /b 0
+
+:: Read IRA_CUSTOM_METADATA_LOCATION from the resolved ini file for a pc/inst pair.
+:: %1=pc  %2=inst  — sets _IRA_PATH to the value, or empty if absent or commented out.
+:Get_IRA_Custom_Metadata_Location
+	set "_IRA_PATH="
+	call :Resolve_Ini_Path %1 %2
+	if not defined _INI_FOR_SUB exit /b 0
+	for /f "tokens=2 delims==" %%v in ('findstr /c:"IRA_CUSTOM_METADATA_LOCATION=" "!_INI_FOR_SUB!" 2^>nul ^| findstr /v "^;"') do set "_IRA_PATH=%%v"
+exit /b 0
+
+:: Comment out IRA_CUSTOM_METADATA_LOCATION in the ENV file for a pc/inst pair.
+:: Only acts when the line is currently uncommented.
+:: %1=pc  %2=inst
+:Comment_Out_IRA_Custom_Metadata
+setlocal
+	call :Resolve_Ini_Path %1 %2
+	if not defined _INI_FOR_SUB endlocal & exit /b 0
+	set "_ini_path=!_INI_FOR_SUB!"
+	:: Check whether an uncommented line exists before editing
+	findstr /c:"IRA_CUSTOM_METADATA_LOCATION=" "!_ini_path!" 2>nul | findstr /v "^;" >nul 2>&1
+	if errorlevel 1 endlocal & exit /b 0
+	set "_ini_tmp=!_ini_path!.tmp"
+	for /f "tokens=1* delims=:" %%i in ('findstr /n .* "!_ini_path!"') do (
+		set "_cline=%%j"
+		if "!_cline!"=="" (
+			echo\>> "!_ini_tmp!"
+		) else (
+			echo !_cline! | findstr /c:"IRA_CUSTOM_METADATA_LOCATION=" 2>nul | findstr /v "^;" >nul 2>&1
+			if !errorlevel! equ 0 (
+				echo ;!_cline!>> "!_ini_tmp!"
+			) else (
+				echo !_cline!>> "!_ini_tmp!"
+			)
+		)
+	)
+	move /Y "!_ini_tmp!" "!_ini_path!" >> %logfile% 2>&1
+	echo Commented out IRA_CUSTOM_METADATA_LOCATION in !_ini_path! >> %logfile%
+endlocal & exit /b 0
+
+:: Decide SDA/CAMF vs ASF mode for one agent instance, then act accordingly.
+::
+:: Case A: IRA_CUSTOM_METADATA_LOCATION is set and the referenced file exists
+::         -> SDA/CAMF mode: leave config unchanged, skip ASF subscription.
+:: Case B: IRA_CUSTOM_METADATA_LOCATION is set but the referenced file is missing
+::         -> Comment it out in the ini file, then copy ASF subscription.
+:: Case C: IRA_CUSTOM_METADATA_LOCATION is not present
+::         -> ASF mode: copy ASF subscription.
+::
+:: %1=pc  %2=inst (may be empty/Primary)  %3=src asf_definition.xml  %4=target subscription file
+:Handle_SDA_CAMF_Mode
+setlocal
+	set "_hpc=%~1"
+	set "_hinst=%~2"
+	set "_hsrc=%~3"
+	set "_hdst=%~4"
+
+	call :Get_IRA_Custom_Metadata_Location !_hpc! !_hinst!
+
+	if defined _IRA_PATH (
+		if exist "!_IRA_PATH!" (
+			:: Case A: SDA/CAMF file present — use SDA mode, no ASF subscription needed
+			call :Log_echo "Product !_hpc! instance !_hinst!: SDA file !_IRA_PATH! found, using SDA mode"
+			endlocal & exit /b 0
+		) else (
+			:: Case B: variable set but file missing — comment it out, fall through to ASF
+			call :Log_echo "Product !_hpc! instance !_hinst!: SDA file !_IRA_PATH! not found, switching to ASF mode"
+			call :Comment_Out_IRA_Custom_Metadata !_hpc! !_hinst!
+		)
+	)
+	:: Case B (continued) or Case C: copy ASF subscription
+	echo Copying !_hsrc! to !_hdst! >> %logfile%
+	copy /Y /V "!_hsrc!" "!_hdst!" >> %logfile% 2>&1
+	if !errorlevel! equ 0 (
+		call :Log_echo "Copied subscription file for !_hpc! to !_hdst!"
+	) else (
+		call :Log_echo "WARNING: Failed to copy subscription file for !_hpc! to !_hdst!"
+	)
+endlocal & exit /b 0
+
 :: Copy asf_definition.xml subscription files for agents that do not send an sda jar.
-:: For each product code in %*, if .\subscriptions\<pc>\asf_definition.xml exists it is
-:: placed into the correct localconfig path.
+:: Iterates over _TMPFILE_INSTANCELIST (<pc> <inst> pairs) and for each entry whose
+:: pc appears in the success list (%*) places the subscription file into the correct
+:: localconfig path.
 ::
 :: Target path rules:
-::   Single-instance agent:  localconfig\<pc>_icam\<pc>_asfSubscription.xml
-::   Multi-instance agent:   localconfig\<pc>_icam\<inst>\<pc>_<inst>_asfSubscription.xml
+::   Primary/single instance:  localconfig\<pc>_icam\<pc>_asfSubscription.xml
+::   Named instance:           localconfig\<pc>_icam\<inst>\<pc>_<inst>_asfSubscription.xml
 ::
-:: Instance names are discovered from config\<pc>_<inst>.config files, which exist
-:: whether the agent is running or not.  The instance subdir is created if needed.
+:: SDA/CAMF detection per impl.md: if IRA_CUSTOM_METADATA_LOCATION is set in K<PC>ENV
+:: (or K<PC>ENV_<inst>) and the referenced file exists, SDA mode is used and no ASF
+:: subscription is written. If the file is missing the variable is commented out and
+:: ASF mode is used instead.
 :Copy_Subscription_Files
 setlocal
 echo Enter Copy_Subscription_Files >> %logfile%
-:copy_sub_loop
-	set "pc=%~1"
-	if not defined pc goto copy_sub_end
-	set "src_file=%SCRIPT_HOME_S%\subscriptions\%pc%\asf_definition.xml"
-	if not exist "!src_file!" (
-		echo No subscription file for %pc%, skipping >> %logfile%
-		shift
-		goto copy_sub_loop
-	)
-	echo Found subscription file for %pc%: !src_file! >> %logfile%
+if not exist %_TMPFILE_INSTANCELIST% goto copy_sub_end
+for /f "tokens=1,2" %%i in (%_TMPFILE_INSTANCELIST%) do (
+	set "pc=%%i"
+	set "inst=%%j"
 
-	:: Look for multi-instance config files: config\<pc>_<inst>.config
-	set "found_instance="
-	for %%f in ("%CandleHome_s%\config\%pc%_*.config") do (
-		set "cfg_base=%%~nxf"
-		:: Strip leading <pc>_ and trailing .config to get the instance name
-		set "inst=!cfg_base!"
-		set "inst=!inst:~0,-7!"
-		call set "inst=%%inst:!pc!_=%%"
-		set "target_dir=%CandleHome_s%\localconfig\%pc%_icam\!inst!"
-		set "target_file=!target_dir!\%pc%_!inst!_asfSubscription.xml"
-		echo Discovered instance '!inst!' from %%f >> %logfile%
-		if not exist "!target_dir!" mkdir "!target_dir!"
-		echo Copying !src_file! to !target_file! >> %logfile%
-		copy /Y /V "!src_file!" "!target_file!" >> %logfile% 2>&1
-		if !errorlevel! equ 0 (
-			call :Log_echo "Copied subscription file for %pc% to !target_file!"
+	:: Check if this pc is in the success list passed as arguments
+	echo %* | findstr /i /w "!pc!" >nul 2>&1
+	if !errorlevel! equ 0 (
+		set "src_file=%SCRIPT_HOME_S%\subscriptions\!pc!\asf_definition.xml"
+		if not exist "!src_file!" (
+			echo No subscription file for !pc!, skipping >> %logfile%
 		) else (
-			call :Log_echo "WARNING: Failed to copy subscription file for %pc% to !target_file!"
-		)
-		set "found_instance=1"
-	)
-
-	if not defined found_instance (
-		:: No <pc>_<inst>.config found — single-instance agent
-		set "target_dir=%CandleHome_s%\localconfig\%pc%_icam"
-		set "target_file=!target_dir!\%pc%_asfSubscription.xml"
-		if not exist "!target_dir!" mkdir "!target_dir!"
-		echo Copying !src_file! to !target_file! >> %logfile%
-		copy /Y /V "!src_file!" "!target_file!" >> %logfile% 2>&1
-		if !errorlevel! equ 0 (
-			call :Log_echo "Copied subscription file for %pc% to !target_file!"
-		) else (
-			call :Log_echo "WARNING: Failed to copy subscription file for %pc% to !target_file!"
+			echo Found subscription file for !pc! instance !inst!: !src_file! >> %logfile%
+			if /i "!inst!"=="Primary" (
+				:: Single/primary instance — no instance subdir
+				set "target_dir=%CandleHome_s%\localconfig\!pc!_icam"
+				set "target_file=!target_dir!\!pc!_asfSubscription.xml"
+			) else (
+				:: Named instance
+				set "target_dir=%CandleHome_s%\localconfig\!pc!_icam\!inst!"
+				set "target_file=!target_dir!\!pc!_!inst!_asfSubscription.xml"
+			)
+			if not exist "!target_dir!" mkdir "!target_dir!"
+			call :Handle_SDA_CAMF_Mode !pc! !inst! "!src_file!" "!target_file!"
 		)
 	)
-	shift
-	goto copy_sub_loop
+)
 :copy_sub_end
 echo Exit Copy_Subscription_Files >> %logfile%
 endlocal & exit /b 0
@@ -880,6 +962,13 @@ echo Enter CovertToITM>>%logfile%
 	copy /Y /V %_TMPFILE_CLEANINI% %_INIFULLPATH% >> %logfile% 2>&1 
 	:: type %_TMPFILE_CLEANINI% | findstr /V /C:"%v2018keyStr%" > %_INIFULLPATH%
 	echo 2nd copy clean %_TMPFILE_CLEANINI% to %_INIFULLPATH% >> %logfile%
+	:: kinconfg may not remove IRA_ASF_SERVER_URL from the registry when reverting to ITM.
+	:: Delete it explicitly so that -m correctly reports itm mode afterwards.
+	set _reg_path_itm=
+	call :GetRegPath _reg_path_itm
+	if defined _reg_path_itm (
+		reg delete "!_reg_path_itm!" /v IRA_ASF_SERVER_URL /f >> %logfile% 2>&1
+	)
 	call :Log_echo  "Complete reconfiguration of %_PC% instance %_INST%"
 echo Exit CovertToITM with rc 0 >>%logfile%
 endlocal & exit /b 0
