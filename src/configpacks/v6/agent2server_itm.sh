@@ -1011,12 +1011,12 @@ handle_sda_camf_mode() {
 	if [ -n "$_ira_path" ]; then
 		if [ -f "$_ira_path" ]; then
 			# Case A: SDA/CAMF file present — use SDA mode, no ASF subscription needed
-			echo "Product ${_hpc}${_hinst:+ instance ${_hinst}}: SDA/CAMF file found at ${_ira_path}, using SDA mode (skipping ASF subscription)"
+			echo "Product ${_hpc}${_hinst:+ instance ${_hinst}}: SDA file ${_ira_path} found, using SDA mode"
 			log_info "SDA/CAMF mode for ${_hpc}${_hinst:+/${_hinst}}: file exists at ${_ira_path}"
 			return 0
 		else
 			# Case B: variable set but file missing — comment it out, fall through to ASF
-			echo "Product ${_hpc}${_hinst:+ instance ${_hinst}}: SDA/CAMF file not found at ${_ira_path}, switching to ASF mode"
+			echo "Product ${_hpc}${_hinst:+ instance ${_hinst}}: SDA file ${_ira_path} not found, switching to ASF mode"
 			log_info "ASF fallback for ${_hpc}${_hinst:+/${_hinst}}: file missing at ${_ira_path}, commenting out IRA_CUSTOM_METADATA_LOCATION"
 			_comment_out_ira_custom_metadata "${CANDLEHOME}/config/${_hpc}.ini"
 			if [ -n "$_hinst" ]; then

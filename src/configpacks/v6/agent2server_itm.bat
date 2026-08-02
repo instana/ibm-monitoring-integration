@@ -820,11 +820,11 @@ setlocal
 	if defined _IRA_PATH (
 		if exist "!_IRA_PATH!" (
 			:: Case A: SDA/CAMF file present — use SDA mode, no ASF subscription needed
-			call :Log_echo "Product !_hpc! instance !_hinst!: SDA/CAMF file found at !_IRA_PATH!, using SDA mode (skipping ASF subscription)"
+			call :Log_echo "Product !_hpc! instance !_hinst!: SDA file !_IRA_PATH! found, using SDA mode"
 			endlocal & exit /b 0
 		) else (
 			:: Case B: variable set but file missing — comment it out, fall through to ASF
-			call :Log_echo "Product !_hpc! instance !_hinst!: SDA/CAMF file not found at !_IRA_PATH!, switching to ASF mode"
+			call :Log_echo "Product !_hpc! instance !_hinst!: SDA file !_IRA_PATH! not found, switching to ASF mode"
 			call :Comment_Out_IRA_Custom_Metadata !_hpc! !_hinst!
 		)
 	)
@@ -962,6 +962,13 @@ echo Enter CovertToITM>>%logfile%
 	copy /Y /V %_TMPFILE_CLEANINI% %_INIFULLPATH% >> %logfile% 2>&1 
 	:: type %_TMPFILE_CLEANINI% | findstr /V /C:"%v2018keyStr%" > %_INIFULLPATH%
 	echo 2nd copy clean %_TMPFILE_CLEANINI% to %_INIFULLPATH% >> %logfile%
+	:: kinconfg may not remove IRA_ASF_SERVER_URL from the registry when reverting to ITM.
+	:: Delete it explicitly so that -m correctly reports itm mode afterwards.
+	set _reg_path_itm=
+	call :GetRegPath _reg_path_itm
+	if defined _reg_path_itm (
+		reg delete "!_reg_path_itm!" /v IRA_ASF_SERVER_URL /f >> %logfile% 2>&1
+	)
 	call :Log_echo  "Complete reconfiguration of %_PC% instance %_INST%"
 echo Exit CovertToITM with rc 0 >>%logfile%
 endlocal & exit /b 0
