@@ -37,12 +37,15 @@ Each `asf_definition.xml` file controls exactly which attribute groups (tables) 
 attributes (columns) the agent subscribes to and forwards as monitoring data.
 You can edit these files to tune the data collection to your needs:
 
-- **Too much data?** Open the agent's `asf_definition.xml` and remove the `<SQLTABLE>` blocks
-  or individual `<COLUMN>` elements you no longer need. The agent will stop collecting and
-  forwarding those metrics on its next restart.
-- **Need more data?** Add `<SQLTABLE>` blocks or `<COLUMN>` elements for the groups/columns
-  you want. Refer to the agent's product documentation for the full list of available
+- **Too much data?** Open the agent's `asf_definition.xml` and remove the `<ASIREQUEST>`
+  blocks or individual `<COLUMN>` elements you no longer need. The agent will stop collecting
+  and forwarding those metrics on its next restart.
+- **Need more data?** Add `<ASIREQUEST>` blocks or `<COLUMN>` elements for the new groups/columns
+  you want to add. Refer to the agent's product documentation for the full list of available
   attribute groups and attributes.
+
+  > **Caution:** Each `<ASIREQUEST>` block must have a unique `SEQ` number within the file.
+  > When adding a new block, use the next sequential number after the highest existing one.
 
 Changes take effect after the `agent2server_itm.sh` (or `.bat`) script is re-run, which
 re-copies the updated file to the agent's `localconfig` directory and restarts the agent.
