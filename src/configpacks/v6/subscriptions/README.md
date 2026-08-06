@@ -31,30 +31,26 @@ whether `subscriptions/<pc>/asf_definition.xml` exists. If found, it copies the 
 
 No extra options are required — the copy happens automatically as part of normal configuration.
 
-## Adding a subscription file for an additional agent
+## Customising what data is collected
 
-The `asf_definition.xml` file is inside the agent's sda jar, nested inside `CentralConfigurationServer.war`:
+Each `asf_definition.xml` file controls exactly which attribute groups (tables) and
+attributes (columns) the agent subscribes to and forwards as monitoring data.
+You can edit these files to tune the data collection to your needs:
 
-```
-<ITMhome>/<arch>/<pc>/support/k<pc>_sda_<version>.jar
-  └── config/CentralConfigurationServer.war
-      └── data_source/<pc>/asf_definition.xml
-```
+- **Too much data?** Open the agent's `asf_definition.xml` and remove the `<SQLTABLE>` blocks
+  or individual `<COLUMN>` elements you no longer need. The agent will stop collecting and
+  forwarding those metrics on its next restart.
+- **Need more data?** Add `<SQLTABLE>` blocks or `<COLUMN>` elements for the groups/columns
+  you want. Refer to the agent's product documentation for the full list of available
+  attribute groups and attributes.
 
-To extract (Linux/AIX example for product code RZ):
-
-```sh
-cd /tmp
-jar xf <ITMhome>/lx8266/rz/support/krz_sda_<version>.jar config/CentralConfigurationServer.war
-jar xf config/CentralConfigurationServer.war data_source/rz/asf_definition.xml
-mkdir -p <configpack>/subscriptions/rz
-cp data_source/rz/asf_definition.xml <configpack>/subscriptions/rz/
-```
+Changes take effect after the `agent2server_itm.sh` (or `.bat`) script is re-run, which
+re-copies the updated file to the agent's `localconfig` directory and restarts the agent.
 
 ## Pre-populated agents (45)
 
 The following agents ship with a pre-populated `asf_definition.xml` in this configpack.
-You can add files for additional agents by following the extraction procedure above.
+If you need a file for an additional agent, contact your IBM support representative.
 
 | PC | Agent | Version |
 |----|-------|---------|
