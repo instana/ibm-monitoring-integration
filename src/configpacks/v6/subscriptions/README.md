@@ -50,7 +50,6 @@ re-copies the updated file to the agent's `localconfig` directory and restarts t
 ## Pre-populated agents (45)
 
 The following agents ship with a pre-populated `asf_definition.xml` in this configpack.
-If you need a file for an additional agent, contact your IBM support representative.
 
 | PC | Agent | Version |
 |----|-------|---------|

@@ -1,7 +1,7 @@
 Use this package to configure IBM Tivoli Monitoring V6 agents to connect to the Instana agent.
 
 For information about integrating ITM V6 agents with Instana, see
-https://www.ibm.com/docs/en/instana-observability/latest?topic=technologies-integrating-itm-v6
+https://www.ibm.com/docs/en/instana-observability?topic=technologies-integrating-itm-v6-public-preview
 
 Prerequisites
 -------------
@@ -36,8 +36,8 @@ To locally configure the V6 agents to connect to the Instana agent, complete the
     - Run the script without any options to see the full list of available options.
     - For custom agents built with Agent Builder or Agent Factory, use the -j option.
 
-To remotely configure the agents to connect to the Instana agent, refer to the following link for details.
-https://www.ibm.com/docs/en/instana-observability/latest?topic=technologies-integrating-itm-v6
+To remotely configure the agents to connect to the Instana agent, refer to the "Remote configuration" section of this page:
+https://www.ibm.com/docs/en/instana-observability?topic=technologies-integrating-itm-v6-public-preview
 
 For details on controlling which tables and columns are collected, see subscriptions/README.md.
 
